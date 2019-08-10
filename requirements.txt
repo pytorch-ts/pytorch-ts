@@ -1,0 +1,4 @@
+torch==1.0.0
+numpy==1.15.4
+argparse=1.1
+chinesecalendar
