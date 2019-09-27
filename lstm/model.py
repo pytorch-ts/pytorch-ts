@@ -9,12 +9,11 @@ class LSTM(nn.Module):
     lstm
     """
 
-    def __init__(self, input_dim, hidden_dim, batch_size, batch_first=True,
+    def __init__(self, input_dim, hidden_dim, batch_first=True,
                  output_dim=1, num_layers=2, dropout=0.):
         super(LSTM, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        self.batch_size = batch_size
         self.num_layers = num_layers
         self.batch_first = batch_first
 
@@ -26,13 +25,13 @@ class LSTM(nn.Module):
         self.linear = nn.Linear(self.hidden_dim, output_dim)
         self.hidden = None
 
-    def init_hidden(self):
+    def init_hidden(self, batch_size):
         """
         init hidden state
         :return:
         """
-        return (torch.zeros(self.num_layers, self.batch_size, self.hidden_dim),
-                torch.zeros(self.num_layers, self.batch_size, self.hidden_dim))
+        return (torch.zeros(self.num_layers, batch_size, self.hidden_dim),
+                torch.zeros(self.num_layers, batch_size, self.hidden_dim))
 
     def forward(self, inp):
         """

@@ -13,7 +13,8 @@ from lstm.data_processing import process_data
 def cli_flag_argparser():
     """"Parser for command line flags."""
     flag_parser = argparse.ArgumentParser()
-    flag_parser.add_argument('--data_path', type=str, default='../data/data.csv')
+    flag_parser.add_argument('--data_path', type=str,
+                             default='../data/data.csv')
     flag_parser.add_argument('--checkpoint_path', type=str, default='')
     flag_parser.add_argument('--num_units', type=int, default=128)
     flag_parser.add_argument('--output_dim', type=int, default=1)
@@ -59,7 +60,7 @@ def _train(data, model, loss_fn, flags, teacher_ratio):
     train_x, target_y, feature_y = data
     new_batch_size = train_x.shape[0]
     model.batch_size = new_batch_size
-    model.hidden = model.init_hidden()
+    model.hidden = model.init_hidden(new_batch_size)
     loss = 0.
     predictions = []
     for idx in range(flags.forecast_length):
@@ -67,7 +68,7 @@ def _train(data, model, loss_fn, flags, teacher_ratio):
             inp = train_x
         else:
             inp = torch.cat([predictions[-1].reshape([-1, 1, 1]),
-                            feature_y[:, idx-1:idx, :]], dim=2)
+                             feature_y[:, idx - 1:idx, :]], dim=2)
         y_true = target_y[:, idx]
         y_pred = model(inp)
         if np.random.random() < teacher_ratio:
@@ -80,13 +81,13 @@ def _train(data, model, loss_fn, flags, teacher_ratio):
 
 
 def train(raw, flags):
-    (loader, forecast_data, num_features, norm_dict) = process_data(
-        raw, flags.forecast_length, flags.batch_size, flags.window,
+    (loader, forecast_data, num_features, norm_dict) = process_data(raw,
+        flags.forecast_length, flags.batch_size, flags.window,
         flags.validation_ratio)
 
-    model = LSTM(num_features, flags.num_units, batch_size=flags.batch_size,
-                 output_dim=flags.output_dim, num_layers=flags.num_layers,
-                 batch_first=True, dropout=flags.dropout)
+    model = LSTM(num_features, flags.num_units, output_dim=flags.output_dim,
+                 num_layers=flags.num_layers, batch_first=True,
+                 dropout=flags.dropout)
 
     loss_fn = SMAPE()
 
@@ -132,9 +133,8 @@ def infer(hparam, train_model, forecast_data, num_features, norm_list):
     :param norm_list:
     :return:
     """
-    model = LSTM(num_features, hparam.num_units, batch_size=hparam.batch_size,
-                 output_dim=hparam.output_dim, num_layers=hparam.num_layers,
-                 batch_first=True, dropout=0)
+    model = LSTM(num_features, hparam.num_units, output_dim=hparam.output_dim,
+                 num_layers=hparam.num_layers, batch_first=True, dropout=0)
     model.load_state_dict(train_model.state_dict())
     model.eval()
     # predict
@@ -146,7 +146,7 @@ def infer(hparam, train_model, forecast_data, num_features, norm_list):
         new_batch_size = train_x.shape[0]
         model.batch_size = new_batch_size
         mean, std = norm_list[index]
-        model.hidden = model.init_hidden()
+        model.hidden = model.init_hidden(new_batch_size)
         for idx in range(hparam.forecast_length):
             if idx == 0:
                 inp = train_x
