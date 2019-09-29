@@ -7,7 +7,7 @@ focusing on deep learning-based models with Pytorch.
 ## Usage example
 
 ## Todo 
-- [ ] deepar
+- [x] deepar
 - [x] lstm
 - [ ] seq2seq
 

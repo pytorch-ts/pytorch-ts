@@ -14,12 +14,8 @@ def last_year_value(df, date_col_name, value_col_name):
         if not value.empty:
             last_year_values.append(value.values[0])
         else:
-            last_year_values.append(np.nan)
+            last_year_values.append(0)
     return last_year_values
-
-
-def is_weekends(dates):
-    return dates.apply(lambda x: int(x.weekday() >= 5))
 
 
 def is_workdays(dates):
