@@ -59,9 +59,8 @@ def load_checkpoint(file_name, model, optimizer=None):
 def _forward(data, model, loss_fn, window, forecast_length, teacher_ratio):
     outputs = []
     label_x, feature_x, label_y, feature_y, _, _ = data
-    new_batch_size = label_x.shape[0]
-    model.batch_size = new_batch_size
-    model.init_hidden(new_batch_size)
+    batch_size = label_x.shape[0]
+    model.init_hidden(batch_size)
     loss = 0.
     inp = torch.cat([label_x.reshape(label_x.shape[0], label_x.shape[1], 1), feature_x], dim=2)
     for time_step in range(window):
