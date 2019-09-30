@@ -15,7 +15,7 @@ def last_year_value(df, date_col_name, value_col_name):
             last_year_values.append(value.values[0])
         else:
             last_year_values.append(0)
-    return last_year_values
+    return np.array(last_year_values)
 
 
 def is_workdays(dates):

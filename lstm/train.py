@@ -94,7 +94,7 @@ def train(raw, flags):
     data_processor = DataProcessor(flags.forecast_length, flags.batch_size, flags.window, False)
     train_loader, val_loader = data_processor.get_train_test_data(raw, flags.validation_ratio)
 
-    model = LSTM(data_processor.num_features + 1, flags.num_units, output_dim=flags.output_dim,
+    model = LSTM(data_processor.num_features, flags.num_units, output_dim=flags.output_dim,
                  num_layers=flags.num_layers, batch_first=True, dropout=flags.dropout)
 
     loss_fn = SMAPE()
@@ -143,7 +143,7 @@ def infer(raw, flags):
     :return:
     """
     data_processor = DataProcessor.load(flags.checkpoint_path)
-    model = LSTM(data_processor.num_features + 1, flags.num_units, output_dim=flags.output_dim,
+    model = LSTM(data_processor.num_features, flags.num_units, output_dim=flags.output_dim,
                  num_layers=flags.num_layers, batch_first=True, dropout=flags.dropout)
     loss_fn = SMAPE()
     model, _, _ = load_checkpoint(flags.checkpoint_path, model, None)

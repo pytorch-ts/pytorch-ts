@@ -115,7 +115,7 @@ class DataProcessor:
         val_scale_list = []
 
         raw['date'] = pd.to_datetime(raw['date'])
-        ts_types = raw['type'].unique()
+        ts_types = sorted(raw['type'].unique())
         if self.use_ts_type:
             self.label_encoder.fit(ts_types)
             encoder_type = self.label_encoder.transform(raw['type'])
@@ -124,10 +124,15 @@ class DataProcessor:
         for type in ts_types:
             df = raw.loc[(raw.type == type)].copy()
             df = df.sort_values(by='date')
+            df.reset_index(drop=True, inplace=True)
             # features
             df['is_workday'] = is_workdays(df.date)
             df['is_holiday'] = is_holidays(df.date)
-            df['last_year_value'] = stats.zscore(last_year_value(df, 'date', 'y'))
+            last_year = last_year_value(df, 'date', 'y')
+            if np.sum(last_year == 0.) == len(last_year):
+                df['last_year_value'] = last_year
+            else:
+                df['last_year_value'] = stats.zscore(last_year)
             df['weekday'] = stats.zscore(df['date'].dt.weekday)
             df['month'] = stats.zscore(df['date'].dt.month)
             if not self.use_ts_type:
@@ -136,27 +141,24 @@ class DataProcessor:
 
             feature_x, label_x, feature_y, label_y = self._get_x_y(df)
 
-            val_length = int((label_x.shape[0] - self.forecast_length) * val_ratio)
-            val_start_idx = -(val_length + self.forecast_length)
+            val_length = int(label_x.shape[0] * val_ratio)
 
             # scale value as described in deepar paper
             scale = 1 + np.mean(label_x, axis=1)
             label_x = label_x / scale[:, np.newaxis]
             label_y = label_y / scale[:, np.newaxis]
-            train_scale = scale[:val_start_idx]
-            val_scale = scale[val_start_idx:-self.forecast_length]
+            train_scale = scale[:-val_length]
+            val_scale = scale[-val_length:]
             train_scale_list.append(train_scale)
             val_scale_list.append(val_scale)
 
             # train data
-            train_data_list.append((label_x[:val_start_idx, :], feature_x[:val_start_idx, :, :],
-                                    label_y[:val_start_idx, :], feature_y[:val_start_idx, :, :]))
+            train_data_list.append((label_x[:-val_length, :], feature_x[:-val_length, :, :],
+                                    label_y[:-val_length, :], feature_y[:-val_length, :, :]))
 
             # validation data
-            val_data_list.append((label_x[val_start_idx:-self.forecast_length, :],
-                                  feature_x[val_start_idx:-self.forecast_length, :, :],
-                                  label_y[val_start_idx:-self.forecast_length, :],
-                                  feature_y[val_start_idx:-self.forecast_length, :, :]))
+            val_data_list.append((label_x[-val_length:, :], feature_x[-val_length:, :, :],
+                                  label_y[-val_length:, :], feature_y[-val_length:, :, :]))
 
         train_data = list(map(np.concatenate, zip(*train_data_list)))
         train_scale = np.concatenate(train_scale_list)

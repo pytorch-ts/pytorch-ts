@@ -9,16 +9,16 @@ class LSTM(nn.Module):
     lstm
     """
 
-    def __init__(self, input_dim, hidden_dim, batch_first=True,
+    def __init__(self, cov_dim, hidden_dim, batch_first=True,
                  output_dim=1, num_layers=2, dropout=0.):
         super(LSTM, self).__init__()
-        self.input_dim = input_dim
+        self.cov_dim = cov_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.batch_first = batch_first
 
         # Define the lstm layer
-        self.lstm = nn.LSTM(self.input_dim, self.hidden_dim, self.num_layers,
+        self.lstm = nn.LSTM(self.cov_dim + 1, self.hidden_dim, self.num_layers,
                             batch_first=batch_first, dropout=dropout)
 
         # Define the output layer
