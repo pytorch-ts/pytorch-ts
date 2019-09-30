@@ -58,10 +58,10 @@ def load_checkpoint(file_name, model, optimizer=None):
 
 def _forward(data, model, loss_fn, window, forecast_length, teacher_ratio):
     outputs = []
-    label_x, feature_x, label_y, feature_y, _ = data
+    label_x, feature_x, label_y, feature_y, _, _ = data
     new_batch_size = label_x.shape[0]
     model.batch_size = new_batch_size
-    model.hidden = model.init_hidden(new_batch_size)
+    model.init_hidden(new_batch_size)
     loss = 0.
     inp = torch.cat([label_x.reshape(label_x.shape[0], label_x.shape[1], 1), feature_x], dim=2)
     for time_step in range(window):
@@ -91,7 +91,7 @@ def evaluate(val_loader, model, loss_fn, window, forecast_length):
 
 
 def train(raw, flags):
-    data_processor = DataProcessor(flags.forecast_length, flags.batch_size, flags.window, False)
+    data_processor = DataProcessor(flags.forecast_length, flags.batch_size, flags.window)
     train_loader, val_loader = data_processor.get_train_test_data(raw, flags.validation_ratio)
 
     model = LSTM(data_processor.num_features, flags.num_units, output_dim=flags.output_dim,

@@ -47,19 +47,20 @@ class TsDataSet(Dataset):
     data set
     """
 
-    def __init__(self, label_x, feature_x, label_y, feature_y, scale):
+    def __init__(self, label_x, feature_x, label_y, feature_y, scale, ts_type):
         self.label_x = label_x
         self.feature_x = feature_x
         self.label_y = label_y
         self.feature_y = feature_y
         self.scale = scale
+        self.ts_type = ts_type
 
     def __len__(self):
         return self.label_x.shape[0]
 
     def __getitem__(self, idx):
         return (self.label_x[idx, :], self.feature_x[idx, :, :], self.label_y[idx, :],
-                self.feature_y[idx, :, :], self.scale[idx])
+                self.feature_y[idx, :, :], self.scale[idx], self.ts_type[idx])
 
 
 class DataProcessor:
@@ -67,23 +68,18 @@ class DataProcessor:
     process training and forecast data
     """
 
-    def __init__(self, forecast_length, batch_size, window, use_ts_type):
+    def __init__(self, forecast_length, batch_size, window):
         """
 
         :param forecast_length:
         :param batch_size:
         :param window:
-        :param use_ts_type:
         """
         self.forecast_length = forecast_length
         self.batch_size = batch_size
         self.window = window
-        self.use_ts_type = use_ts_type
-        if use_ts_type:
-            self.num_features = 6
-            self.label_encoder = LabelEncoder()
-        else:
-            self.num_features = 5
+        self.label_encoder = LabelEncoder()
+        self.num_features = 5
 
     def _get_x_y(self, df):
         data = series_to_supervised(df, self.window, self.forecast_length)
@@ -113,14 +109,12 @@ class DataProcessor:
         train_scale_list = []
         val_data_list = []
         val_scale_list = []
+        train_type_list = []
+        val_type_list = []
 
         raw['date'] = pd.to_datetime(raw['date'])
         ts_types = sorted(raw['type'].unique())
-        if self.use_ts_type:
-            self.label_encoder.fit(ts_types)
-            encoder_type = self.label_encoder.transform(raw['type'])
-            del raw['type']
-            raw['type'] = encoder_type
+        self.label_encoder.fit(ts_types)
         for type in ts_types:
             df = raw.loc[(raw.type == type)].copy()
             df = df.sort_values(by='date')
@@ -135,8 +129,8 @@ class DataProcessor:
                 df['last_year_value'] = stats.zscore(last_year)
             df['weekday'] = stats.zscore(df['date'].dt.weekday)
             df['month'] = stats.zscore(df['date'].dt.month)
-            if not self.use_ts_type:
-                del df['type']
+
+            del df['type']
             del df['date']
 
             feature_x, label_x, feature_y, label_y = self._get_x_y(df)
@@ -160,28 +154,33 @@ class DataProcessor:
             val_data_list.append((label_x[-val_length:, :], feature_x[-val_length:, :, :],
                                   label_y[-val_length:, :], feature_y[-val_length:, :, :]))
 
-        train_data = list(map(np.concatenate, zip(*train_data_list)))
-        train_scale = np.concatenate(train_scale_list)
-        train_dataset = TsDataSet(*(train_data + [train_scale]))
-        sampler = WeightedRandomSampler(np.abs(train_scale), train_scale.shape[0])
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, sampler=sampler)
+            train_type_list.append(
+                self.label_encoder.transform([type] * label_x[:-val_length, :].shape[0]))
+            val_type_list.append(self.label_encoder.transform([type] * val_length))
 
-        val_data = list(map(np.concatenate, zip(*val_data_list)))
-        val_scale = np.concatenate(val_scale_list)
-        val_dataset = TsDataSet(*(val_data + [val_scale]))
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size)
+            train_data = list(map(np.concatenate, zip(*train_data_list)))
+            train_scale = np.concatenate(train_scale_list)
+            train_types = np.concatenate(train_type_list)
+
+            train_dataset = TsDataSet(*(train_data + [train_scale, train_types]))
+            sampler = WeightedRandomSampler(np.abs(train_scale), train_scale.shape[0])
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, sampler=sampler)
+
+            val_data = list(map(np.concatenate, zip(*val_data_list)))
+            val_scale = np.concatenate(val_scale_list)
+            val_types = np.concatenate(val_type_list)
+
+            val_dataset = TsDataSet(*(val_data + [val_scale, val_types]))
+            val_loader = DataLoader(val_dataset, batch_size=self.batch_size)
 
         return train_loader, val_loader
 
     def get_forecast_data(self, raw):
         forecast_data_list = []
         scale_list = []
+        type_list = []
         raw['date'] = pd.to_datetime(raw['date'])
         ts_types = sorted(raw['type'].unique())
-        if self.use_ts_type:
-            encoder_type = self.label_encoder.transform(raw['type'])
-            del raw['type']
-            raw['type'] = encoder_type
         for type in ts_types:
             df = raw.loc[(raw.type == type)].copy()
             end_date = max(df.date)
@@ -197,8 +196,7 @@ class DataProcessor:
             df['last_year_value'] = stats.zscore(last_year_value(df, 'date', 'y'))
             df['weekday'] = stats.zscore(df['date'].dt.weekday)
             df['month'] = stats.zscore(df['date'].dt.month)
-            if not self.use_ts_type:
-                del df['type']
+            del df['type']
             del df['date']
             feature_x, label_x, feature_y, label_y = self._get_x_y(df)
             # scale value as described in deepar paper
@@ -214,25 +212,24 @@ class DataProcessor:
             forecast_data_list.append(
                 [forecast_label_x, forecast_feature_x, forecast_label_y, forecast_feature_y])
             scale_list.append(scale)
+            type_list.append(self.label_encoder.transform([type]))
         data = list(map(np.concatenate, zip(*forecast_data_list)))
         scale = np.concatenate(scale_list)
-        dataset = TsDataSet(*(data + [scale]))
+        types = np.concatenate(type_list)
+        dataset = TsDataSet(*(data + [scale, types]))
         loader = DataLoader(dataset, batch_size=1)
         return loader, ts_types
 
     def save(self, file_name):
-
-        if self.use_ts_type:
-            np.save(file_name + '/classes.npy', self.label_encoder.classes_)
+        np.save(file_name + '/classes.npy', self.label_encoder.classes_)
         with open(file_name + '/data_process_params.json', 'w') as f:
             json.dump({'forecast_length': self.forecast_length, 'batch_size': self.batch_size,
-                       'window': self.window, 'use_ts_type': self.use_ts_type}, f)
+                       'window': self.window}, f)
 
     @staticmethod
     def load(file_name):
         with open(file_name + '/data_process_params.json', 'r') as f:
             param = json.load(f)
         data_processor = DataProcessor(**param)
-        if data_processor.use_ts_type:
-            data_processor.label_encoder.classes_ = np.load(file_name + '/classes.npy')
+        data_processor.label_encoder.classes_ = np.load(file_name + '/classes.npy')
         return data_processor

@@ -9,8 +9,8 @@ class LSTM(nn.Module):
     lstm
     """
 
-    def __init__(self, cov_dim, hidden_dim, batch_first=True,
-                 output_dim=1, num_layers=2, dropout=0.):
+    def __init__(self, cov_dim, hidden_dim, batch_first=True, output_dim=1, num_layers=2,
+                 dropout=0.):
         super(LSTM, self).__init__()
         self.cov_dim = cov_dim
         self.hidden_dim = hidden_dim
@@ -30,8 +30,8 @@ class LSTM(nn.Module):
         init hidden state
         :return:
         """
-        return (torch.zeros(self.num_layers, batch_size, self.hidden_dim),
-                torch.zeros(self.num_layers, batch_size, self.hidden_dim))
+        self.hidden = (torch.zeros(self.num_layers, batch_size, self.hidden_dim),
+                       torch.zeros(self.num_layers, batch_size, self.hidden_dim))
 
     def forward(self, inp):
         """
@@ -46,6 +46,7 @@ class LSTM(nn.Module):
 
 class SMAPE(nn.Module):
     """Compute symmetric mean absolute percentage error for Tensors."""
+
     def __init__(self, epsilon=0.1):
         super(SMAPE, self).__init__()
         self.epsilon = epsilon
