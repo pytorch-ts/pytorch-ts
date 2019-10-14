@@ -7,7 +7,8 @@ focusing on deep learning-based models with Pytorch.
 ## Usage example
 
 ## Todo 
-- [x] deepar
-- [x] lstm
-- [ ] seq2seq
-
+- [x] DeepAR
+- [x] LSTM
+- [ ] Seq2Seqq
+- [ ] WaveNet
+- [ ] Extreme Event Forecasting
