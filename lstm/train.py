@@ -6,7 +6,8 @@ import pandas as pd
 
 import torch
 import argparse
-from lstm.model import LSTM, SMAPE
+from lstm.model import LSTM
+from metric import SMAPE, accuracy
 from data_processing import DataProcessor
 
 
@@ -77,16 +78,19 @@ def _forward(data, model, loss_fn, window, forecast_length, teacher_ratio):
         outputs.append(output)
         loss += loss_fn(output, y_true)
     avg_loss = loss / forecast_length
-    return avg_loss, outputs
+    avg_acc = accuracy(outputs, label_y)
+    return avg_loss, outputs, avg_acc
 
 
 def evaluate(val_loader, model, loss_fn, window, forecast_length):
     losses = []
+    accs = []
     with torch.no_grad():
         for step, data in enumerate(val_loader):
-            loss, _ = _forward(data, model, loss_fn, window, forecast_length, 1.)
+            loss, output, acc = _forward(data, model, loss_fn, window, forecast_length, 1.)
             losses.append(loss)
-    return np.mean(losses)
+            accs.append(acc)
+    return np.mean(losses), np.mean(accs)
 
 
 def train(raw, flags):
@@ -110,17 +114,20 @@ def train(raw, flags):
     # TODO: add early stop
     for epoch in range(start_epoch, flags.num_epochs):
         for step, data in enumerate(train_loader):
-            avg_loss, _ = _forward(data, model, loss_fn, flags.window, flags.forecast_length,
-                                   teacher_ratio)
+            avg_loss, _, acc = _forward(data, model, loss_fn, flags.window, flags.forecast_length,
+                                        teacher_ratio)
             loss_history.append(avg_loss)
             opt.zero_grad()
             avg_loss.backward()
             opt.step()
             teacher_ratio *= flags.teacher_ratio_decay
-        validation_loss = evaluate(val_loader, model, loss_fn, flags.window, flags.forecast_length)
+        val_loss, val_acc = evaluate(val_loader, model, loss_fn, flags.window,
+                                     flags.forecast_length)
         print('Epoch: %d' % epoch)
         print("Training Loss:%.3f" % avg_loss)
-        print("Validation Loss:%.3f" % validation_loss)
+        print('Training Avg Accuracy:%.3f' % acc)
+        print("Validation Loss:%.3f" % val_loss)
+        print("Validation Accuracy:%.3f" % val_acc)
         print('Teacher_ratio: %.3f' % teacher_ratio)
         print()
 

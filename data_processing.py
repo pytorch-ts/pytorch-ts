@@ -135,7 +135,7 @@ class DataProcessor:
 
             feature_x, label_x, feature_y, label_y = self._get_x_y(df)
 
-            val_length = int(label_x.shape[0] * val_ratio)
+            val_length = max(1, int(label_x.shape[0] * val_ratio))
 
             # scale value as described in deepar paper
             scale = 1 + np.mean(label_x, axis=1)
@@ -158,20 +158,20 @@ class DataProcessor:
                 self.label_encoder.transform([type] * label_x[:-val_length, :].shape[0]))
             val_type_list.append(self.label_encoder.transform([type] * val_length))
 
-            train_data = list(map(np.concatenate, zip(*train_data_list)))
-            train_scale = np.concatenate(train_scale_list)
-            train_types = np.concatenate(train_type_list)
+        train_data = list(map(np.concatenate, zip(*train_data_list)))
+        train_scale = np.concatenate(train_scale_list)
+        train_types = np.concatenate(train_type_list)
 
-            train_dataset = TsDataSet(*(train_data + [train_scale, train_types]))
-            sampler = WeightedRandomSampler(np.abs(train_scale), train_scale.shape[0])
-            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, sampler=sampler)
+        train_dataset = TsDataSet(*(train_data + [train_scale, train_types]))
+        sampler = WeightedRandomSampler(np.abs(train_scale), train_scale.shape[0])
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, sampler=sampler)
 
-            val_data = list(map(np.concatenate, zip(*val_data_list)))
-            val_scale = np.concatenate(val_scale_list)
-            val_types = np.concatenate(val_type_list)
+        val_data = list(map(np.concatenate, zip(*val_data_list)))
+        val_scale = np.concatenate(val_scale_list)
+        val_types = np.concatenate(val_type_list)
 
-            val_dataset = TsDataSet(*(val_data + [val_scale, val_types]))
-            val_loader = DataLoader(val_dataset, batch_size=self.batch_size)
+        val_dataset = TsDataSet(*(val_data + [val_scale, val_types]))
+        val_loader = DataLoader(val_dataset, batch_size=self.batch_size)
 
         return train_loader, val_loader
 

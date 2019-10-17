@@ -42,24 +42,3 @@ class LSTM(nn.Module):
         lstm_out, self.hidden = self.lstm(inp, self.hidden)
         out = self.linear(lstm_out[:, -1, :])
         return out.view(-1)
-
-
-class SMAPE(nn.Module):
-    """Compute symmetric mean absolute percentage error for Tensors."""
-
-    def __init__(self, epsilon=0.1):
-        super(SMAPE, self).__init__()
-        self.epsilon = epsilon
-
-    def forward(self, y_pred, y_true):
-        """
-        forward
-        :param y_pred:
-        :param y_true:
-        :return:
-        """
-        summ = torch.max(torch.abs(y_true) + torch.abs(y_pred) + self.epsilon,
-                         torch.tensor(0.5 + self.epsilon))
-        error = torch.abs(y_true - y_pred) / summ * 2.0
-        loss = torch.mean(error)
-        return loss
