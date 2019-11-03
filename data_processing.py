@@ -79,7 +79,7 @@ class DataProcessor:
         self.batch_size = batch_size
         self.window = window
         self.label_encoder = LabelEncoder()
-        self.num_features = 5
+        self.num_features = 6
 
     def _get_x_y(self, df):
         data = series_to_supervised(df, self.window, self.forecast_length)
@@ -98,7 +98,7 @@ class DataProcessor:
                                              self.num_features)
         return feature_x, label_x, feature_y, label_y
 
-    def get_train_test_data(self, raw, val_ratio=0.1):
+    def get_train_test_data(self, raw, if_scale=True, val_ratio=0.1):
         """
 
         :param raw: pandas dataframe, with column 'date','y','type'
@@ -115,6 +115,10 @@ class DataProcessor:
         raw['date'] = pd.to_datetime(raw['date'])
         ts_types = sorted(raw['type'].unique())
         self.label_encoder.fit(ts_types)
+
+        self.start = raw['date'].min()
+        raw['time_index'] = (raw['date'] - self.start) / pd.Timedelta(days=365)
+
         for type in ts_types:
             df = raw.loc[(raw.type == type)].copy()
             df = df.sort_values(by='date')
@@ -138,7 +142,10 @@ class DataProcessor:
             val_length = max(1, int(label_x.shape[0] * val_ratio))
 
             # scale value as described in deepar paper
-            scale = 1 + np.mean(label_x, axis=1)
+            if if_scale:
+                scale = 1 + np.mean(label_x, axis=1)
+            else:
+                scale = 1 + np.zeros(label_x.shape[0], dtype=np.float32)
             label_x = label_x / scale[:, np.newaxis]
             label_y = label_y / scale[:, np.newaxis]
             train_scale = scale[:-val_length]

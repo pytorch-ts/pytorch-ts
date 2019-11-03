@@ -29,6 +29,7 @@ def cli_flag_argparser():
     flag_parser.add_argument('--window', type=int, default=30)
     flag_parser.add_argument('--dropout', type=float, default=0.2)
     flag_parser.add_argument('--validation_ratio', type=float, default=0.1)
+    flag_parser.add_argument('--loss', type=str, default='mse')
     return flag_parser
 
 
@@ -64,7 +65,7 @@ def _forward(data, model, loss_fn, window, forecast_length, training=True, teach
     model.init_hidden(batch_size)
     # concat the true value of day(t-1) and the features of day(t) to forecast day(t)
     inp = torch.cat(
-        [label_x[:, :-1].reshape(label_x.shape[0], label_x.shape[1] - 1, 1), feature_x[:, 1:, :]],
+        [label_x[:, :-1].reshape(batch_size, window - 1, 1), feature_x[:, 1:, :]],
         dim=2)
     # no need to iterate the first day
     for time_step in range(window - 1):
@@ -134,12 +135,17 @@ def evaluate(val_loader, model, loss_fn, window, forecast_length):
 
 def train(raw, flags):
     data_processor = DataProcessor(flags.forecast_length, flags.batch_size, flags.window)
-    train_loader, val_loader = data_processor.get_train_test_data(raw, flags.validation_ratio)
+    train_loader, val_loader = data_processor.get_train_test_data(raw,
+                                                                  if_scale=True,
+                                                                  val_ratio=flags.validation_ratio)
 
     model = LSTM(data_processor.num_features, flags.num_units, output_dim=flags.output_dim,
                  num_layers=flags.num_layers, batch_first=True, dropout=flags.dropout)
 
-    loss_fn = SMAPE()
+    if flags.loss == 'mse':
+        loss_fn = torch.nn.MSELoss()
+    else:
+        loss_fn = SMAPE()
 
     opt = torch.optim.Adam(model.parameters(), lr=flags.learning_rate)
 
