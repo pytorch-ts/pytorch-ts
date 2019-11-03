@@ -24,7 +24,7 @@ def cli_flag_argparser():
     flag_parser.add_argument('--num_epochs', type=int, default=40)
     flag_parser.add_argument('--batch_size', type=int, default=128)
     flag_parser.add_argument('--teacher_ratio', type=float, default=1.0)
-    flag_parser.add_argument('--teacher_ratio_decay', type=float, default=1.0)
+    flag_parser.add_argument('--teacher_ratio_decay', type=float, default=0.995)
     flag_parser.add_argument('--forecast_length', type=int, default=5)
     flag_parser.add_argument('--window', type=int, default=30)
     flag_parser.add_argument('--dropout', type=float, default=0.2)
@@ -57,29 +57,68 @@ def load_checkpoint(file_name, model, optimizer=None):
     return model, optimizer, start_epoch
 
 
-def _forward(data, model, loss_fn, window, forecast_length, teacher_ratio):
+def _forward(data, model, loss_fn, window, forecast_length, training=True, teacher_ratio=1):
     outputs = []
     label_x, feature_x, label_y, feature_y, _, _ = data
     batch_size = label_x.shape[0]
     model.init_hidden(batch_size)
-    loss = 0.
-    inp = torch.cat([label_x.reshape(label_x.shape[0], label_x.shape[1], 1), feature_x], dim=2)
-    for time_step in range(window):
+    # concat the true value of day(t-1) and the features of day(t) to forecast day(t)
+    inp = torch.cat(
+        [label_x[:, :-1].reshape(label_x.shape[0], label_x.shape[1] - 1, 1), feature_x[:, 1:, :]],
+        dim=2)
+    # no need to iterate the first day
+    for time_step in range(window - 1):
         output = model(inp[:, time_step:time_step + 1, :])
-
+        outputs.append(output)
     for idx in range(forecast_length):
-        y_true = label_y[:, idx]
-        if np.random.random() < teacher_ratio:
-            inp = torch.cat([y_true.reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]], dim=2)
+        if idx == 0:
+            inp = torch.cat([label_x[:, -1:].reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]],
+                            dim=2)
+        else:
+            if training:
+                if np.random.random() < teacher_ratio:
+                    inp = torch.cat(
+                        [label_y[:, idx - 1].reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]],
+                        dim=2)
+                else:
+                    inp = torch.cat([output.reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]],
+                                    dim=2)
+            else:
+                inp = torch.cat([output.reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]], dim=2)
+
+        output = model(inp)
+        outputs.append(output)
+    outputs = torch.stack(outputs, 1)
+    loss = loss_fn(outputs, torch.cat([label_x[:, 1:], label_y], 1))
+
+    avg_acc = accuracy(outputs[:, -forecast_length:], label_y)
+    return loss, outputs, avg_acc
+
+
+def _infer(data, model, window, forecast_length):
+    outputs = []
+    label_x, feature_x, _, feature_y, _, _ = data
+    batch_size = label_x.shape[0]
+    model.init_hidden(batch_size)
+    # concat the true value of day(t-1) and the features of day(t) to forecast day(t)
+    inp = torch.cat(
+        [label_x[:, :-1].reshape(label_x.shape[0], label_x.shape[1] - 1, 1), feature_x[:, 1:, :]],
+        dim=2)
+    # no need to iterate the first day
+    for time_step in range(window - 1):
+        output = model(inp[:, time_step:time_step + 1, :])
+        outputs.append(output)
+    for idx in range(forecast_length):
+        if idx == 0:
+            inp = torch.cat([label_x[:, -1:].reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]],
+                            dim=2)
         else:
             inp = torch.cat([output.reshape([-1, 1, 1]), feature_y[:, idx:idx + 1, :]], dim=2)
 
         output = model(inp)
         outputs.append(output)
-        loss += loss_fn(output, y_true)
-    avg_loss = loss / forecast_length
-    avg_acc = accuracy(outputs, label_y)
-    return avg_loss, outputs, avg_acc
+    outputs = torch.stack(outputs, 1)
+    return outputs
 
 
 def evaluate(val_loader, model, loss_fn, window, forecast_length):
@@ -87,7 +126,7 @@ def evaluate(val_loader, model, loss_fn, window, forecast_length):
     accs = []
     with torch.no_grad():
         for step, data in enumerate(val_loader):
-            loss, output, acc = _forward(data, model, loss_fn, window, forecast_length, 1.)
+            loss, output, acc = _forward(data, model, loss_fn, window, forecast_length, False)
             losses.append(loss)
             accs.append(acc)
     return np.mean(losses), np.mean(accs)
@@ -115,10 +154,11 @@ def train(raw, flags):
     for epoch in range(start_epoch, flags.num_epochs):
         for step, data in enumerate(train_loader):
             avg_loss, _, acc = _forward(data, model, loss_fn, flags.window, flags.forecast_length,
-                                        teacher_ratio)
+                                        True, teacher_ratio)
             loss_history.append(avg_loss)
             opt.zero_grad()
             avg_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             opt.step()
             teacher_ratio *= flags.teacher_ratio_decay
         val_loss, val_acc = evaluate(val_loader, model, loss_fn, flags.window,
@@ -129,6 +169,8 @@ def train(raw, flags):
         print("Validation Loss:%.3f" % val_loss)
         print("Validation Accuracy:%.3f" % val_acc)
         print('Teacher_ratio: %.3f' % teacher_ratio)
+        print('Gradients:%.3f' % torch.mean(
+            (torch.stack([torch.mean(torch.abs(p.grad)) for p in model.parameters()], 0))))
         print()
 
     print('Model training completed and save at %s' % flags.checkpoint_path)
@@ -151,7 +193,6 @@ def infer(raw, flags):
     data_processor = DataProcessor.load(flags.checkpoint_path)
     model = LSTM(data_processor.num_features, flags.num_units, output_dim=flags.output_dim,
                  num_layers=flags.num_layers, batch_first=True, dropout=flags.dropout)
-    loss_fn = SMAPE()
     model, _, _ = load_checkpoint(flags.checkpoint_path, model, None)
     model.eval()
     # predict
@@ -160,7 +201,7 @@ def infer(raw, flags):
     with torch.no_grad():
         for type, data in zip(ts_types, loader):
             scale = data[4]
-            _, outputs = _forward(data, model, loss_fn, flags.window, flags.forecast_length, 1.)
+            _, outputs = _infer(data, model, flags.window, flags.forecast_length)
             results[type] = [(output * scale).detach().numpy()[0] for output in outputs]
     print(results)
     return results

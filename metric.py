@@ -33,6 +33,6 @@ def accuracy(forecast, label):
     :param label:
     :return:
     """
-    error = torch.abs((label - torch.stack(forecast, 1))/(label + 1e-3))
+    error = torch.abs((label - forecast)/(label + 1e-3))
     acc = torch.max(torch.zeros_like(error), 1 - error)
     return torch.mean(acc)
